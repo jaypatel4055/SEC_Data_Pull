@@ -1,61 +1,57 @@
-def parse_xbrl_to_dataframe(xbrl_file_path):
+import pandas as pd
+from bs4 import BeautifulSoup
+import requests
+from datetime import datetime, timedelta
+import time 
+
+
+def get_ticker_to_cik_mapping():
     """
-    Parse XBRL file and convert it to a pandas DataFrame
+    Get mapping of stock tickers to SEC CIK numbers
     
-    Args:
-        xbrl_file_path (str): Path to the XBRL file
-        
     Returns:
-        pandas.DataFrame: DataFrame containing the XBRL data
+        dict: Mapping of tickers to CIK numbers
     """
     try:
-        # Import required libraries
-        import pandas as pd
-        from bs4 import BeautifulSoup
+        # SEC company tickers file URL
+        url = "https://www.sec.gov/files/company_tickers.json"
         
-        # Read and parse XBRL file
-        with open(xbrl_file_path, 'r', encoding='utf-8') as file:
-            soup = BeautifulSoup(file, 'xml')
+        # Get the data
+        response = requests.get(url)
+        data = response.json()
         
-        # Initialize lists to store data
-        contexts = {}
-        data = []
-        
-        # Extract contexts
-        context_elements = soup.find_all('context')
-        for context in context_elements:
-            context_id = context.get('id')
-            period = context.find('period')
-            if period:
-                instant = period.find('instant')
-                if instant:
-                    contexts[context_id] = instant.text
-                else:
-                    start_date = period.find('startDate')
-                    end_date = period.find('endDate')
-                    if start_date and end_date:
-                        contexts[context_id] = f"{start_date.text} to {end_date.text}"
-        
-        # Extract facts
-        for tag in soup.find_all():
-            if tag.name != 'context' and tag.get('contextRef'):
-                fact = {
-                    'concept': tag.name,
-                    'value': tag.text.strip(),
-                    'context_ref': tag.get('contextRef'),
-                    'period': contexts.get(tag.get('contextRef'), ''),
-                    'unit': tag.get('unitRef', ''),
-                    'decimals': tag.get('decimals', '')
-                }
-                data.append(fact)
-        
-        # Create DataFrame
-        df = pd.DataFrame(data)
-        return df
+        # Create mapping dictionary
+        ticker_to_cik = {}
+        for entry in data.values():
+            # Add leading zeros to CIK to make it 10 digits
+            cik_str = str(entry['cik_str']).zfill(10)
+            ticker_to_cik[entry['ticker']] = cik_str
+            
+        return ticker_to_cik
         
     except Exception as e:
-        print(f"Error parsing XBRL file: {str(e)}")
-        return None
+        print(f"Error fetching ticker to CIK mapping: {str(e)}")
+        return {}
+
+def get_sp500_tickers():
+    """
+    Get list of S&P 500 tickers using pandas_datareader
+    
+    Returns:
+        list: List of S&P 500 tickers
+    """
+    try:
+        import pandas_datareader.data as web
+        sp500 = web.DataReader(
+            'sp500', 'wikipedia', 
+            start=datetime.now()
+        )
+        return sp500.index.tolist()
+    except Exception as e:
+        print(f"Error fetching S&P 500 tickers: {str(e)}")
+        return []
+
+
 
 def get_ticker_to_cik_mapping():
     """
@@ -188,5 +184,66 @@ def get_sp500_sec_filings(filing_types=['10-K', '10-Q'], start_date=None, end_da
     return filing_links
 
 
+
+
+
+def parse_xbrl_to_dataframe(xbrl_file_path):
+    """
+    Parse XBRL file and convert it to a pandas DataFrame
     
+    Args:
+        xbrl_file_path (str): Path to the XBRL file
+        
+    Returns:
+        pandas.DataFrame: DataFrame containing the XBRL data
+    """
+    try:
+        # Import required libraries
+        import pandas as pd
+        from bs4 import BeautifulSoup
+        
+        # Read and parse XBRL file
+        with open(xbrl_file_path, 'r', encoding='utf-8') as file:
+            soup = BeautifulSoup(file, 'xml')
+        
+        # Initialize lists to store data
+        contexts = {}
+        data = []
+        
+        # Extract contexts
+        context_elements = soup.find_all('context')
+        for context in context_elements:
+            context_id = context.get('id')
+            period = context.find('period')
+            if period:
+                instant = period.find('instant')
+                if instant:
+                    contexts[context_id] = instant.text
+                else:
+                    start_date = period.find('startDate')
+                    end_date = period.find('endDate')
+                    if start_date and end_date:
+                        contexts[context_id] = f"{start_date.text} to {end_date.text}"
+        
+        # Extract facts
+        for tag in soup.find_all():
+            if tag.name != 'context' and tag.get('contextRef'):
+                fact = {
+                    'concept': tag.name,
+                    'value': tag.text.strip(),
+                    'context_ref': tag.get('contextRef'),
+                    'period': contexts.get(tag.get('contextRef'), ''),
+                    'unit': tag.get('unitRef', ''),
+                    'decimals': tag.get('decimals', '')
+                }
+                data.append(fact)
+        
+        # Create DataFrame
+        df = pd.DataFrame(data)
+        return df
+        
+    except Exception as e:
+        print(f"Error parsing XBRL file: {str(e)}")
+        return None
+
 
